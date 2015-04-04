@@ -1,0 +1,887 @@
+package ua.edu.svd;
+
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.File;
+import java.io.FileInputStream;
+import java.io.FileNotFoundException;
+import java.io.FileOutputStream;
+import java.io.FileWriter;
+import java.io.IOException;
+import java.io.PrintWriter;
+import java.util.Scanner;
+
+import Jama.Matrix;
+
+public class SVD {
+
+	private String fileName;
+	private String header;
+	private static int[][] img; // pixel values of the image
+	private static int rowN, columnN; // the image has rowN rows and columnN
+										// columns
+	private static int maxG;
+	private int[][] OriginalImg;
+
+	public static void main(String[] args) {
+
+		if (args != null && args.length > 0) {
+			SVD svdObject = new SVD();
+			int option = Integer.parseInt(args[0]);
+
+			switch (option) {
+			case 1: {
+				File file = new File(args[1]);
+				svdObject.readImage(file);
+				svdObject.saveImage();
+				System.out.println("Binary Image Saved");
+				break;
+
+			}
+			case 2: {
+				File file = new File(args[1]);
+				svdObject.readBinaryImage(file);
+				svdObject.saveBinaryImage();
+				System.out.println("Image retrived");
+				break;
+			}
+			case 3: {
+				if (args[1] == null || args[2] == null || args[3] == null) {
+					System.out.println("Please enter valid Input");
+				} else {
+					File headerFile = new File(args[1]);
+					File svdFile = new File(args[2]);
+					int rank = Integer.parseInt(args[3]);
+					// read the data from input file and form a matrix A
+					svdObject.readAndSaveDataFromUSV(headerFile, svdFile, rank);
+
+				}
+				System.out.println("Done 3");
+				break;
+
+			}
+			case 4: {
+				File file = new File(args[1]);
+				createApproximatedImageAndSave(file);
+				System.out.println("DOne 4");
+				break;
+			}
+
+			}
+
+		}
+
+	}
+
+	/**
+	 * read the image file
+	 * 
+	 * @param file
+	 *            : the image file
+	 */
+	public void readImage(File file) {
+		header = "";
+		fileName = file.getPath();
+
+		try {
+			Scanner input = new Scanner(file);
+
+			if (input.hasNext("P2"))
+				header += input.nextLine().trim();
+			else
+				throw new IOException();
+
+			if (input.hasNext("#.*"))
+				input.nextLine();
+
+			columnN = input.nextInt();
+			rowN = input.nextInt();
+			maxG = input.nextInt();
+
+			img = new int[rowN][columnN];
+			for (int i = 0; i < rowN; i++) {
+				for (int j = 0; j < columnN; j++) {
+					img[i][j] = input.nextInt();
+				}
+			}
+			input.close();
+		} catch (FileNotFoundException e) {
+			System.out.println("warning: file not found");
+		} catch (IOException e) {
+			System.out.println("warning: file format error");
+		}
+	}
+
+	public void saveImage() {
+		if (fileName != null && img != null && img.length > 0) {
+
+			String outputFileName = fileName
+					.substring(0, fileName.indexOf('.'))
+					+ "_b"
+					+ fileName.substring(fileName.indexOf('.'));
+
+			try {
+
+				FileOutputStream fos = new FileOutputStream(outputFileName);
+				DataOutputStream dos = new DataOutputStream(fos);
+
+				int[] colArray = splitNumbers(columnN);
+				writeNumber(dos, colArray);
+
+				int[] rowArray = splitNumbers(rowN);
+				writeNumber(dos, rowArray);
+
+				dos.write(maxG);
+
+				/*
+				 * FileWriter fwriter = new FileWriter(outputFileName);
+				 * PrintWriter outputFile = new PrintWriter(fwriter); String
+				 * binaryRow = convertNumberToAscii(rowN); String binaryCol =
+				 * convertNumberToAscii(columnN); String binaryMaxG =
+				 * String.valueOf((char) maxG); // outputFile.print(header);
+				 * outputFile.print(binaryCol); outputFile.print(binaryRow);
+				 * outputFile.print(binaryMaxG);
+				 */
+				for (int i = 0; i < rowN; i++) {
+					for (int j = 0; j < columnN; j++) {
+						dos.write(img[i][j]);
+					}
+
+				}
+
+				dos.close();
+
+			} catch (IOException e) {
+				System.out.println("warning: file output error");
+			}
+		}
+	}
+
+	public String convertNumberToAscii(int number) {
+
+		String binaryValue = Integer.toBinaryString(number);
+		StringBuilder asciiValue = new StringBuilder();
+		if (binaryValue.length() > 8) {
+			int start = 0;
+			int end = 8;
+			for (int i = binaryValue.length(); i > 0; i -= 8) {
+				String partialNumber = binaryValue.substring(start, end);
+				int a = Integer.valueOf(partialNumber, 2);
+
+				if (a != 10 && a != 13) {
+					char aChar = (char) a;
+					System.out.println((int) aChar);
+					asciiValue.append(aChar);
+				} else if (a == 10) {
+					asciiValue.append('1');
+				} else {
+					asciiValue.append('2');
+				}
+
+				start += 8;
+				end = end + 8 > binaryValue.length() ? binaryValue.length()
+						: end + 8;
+
+			}
+		} else {
+
+			asciiValue.append((char) number);
+			asciiValue.append('3');
+
+		}
+		binaryValue = asciiValue.toString();
+		return binaryValue;
+
+	}
+
+	/**
+	 * read the image file
+	 * 
+	 * @param file
+	 *            : the image file
+	 */
+	public void readBinaryImage(File file) {
+		// header = "";
+		fileName = file.getPath();
+
+		try {
+			FileInputStream fis = new FileInputStream(fileName);
+			DataInputStream dis = new DataInputStream(fis);
+
+			int col1 = dis.read();
+			int col2 = dis.read();
+
+			// since we are setting the null part to '3' here we are equating it
+			// with 51
+			if (col2 == 51) {
+				columnN = col1;
+			} else {
+				String binaryValue1 = Integer.toBinaryString(col1);
+				String binaryValue2 = appendZerosToBinaryString(
+						Integer.toBinaryString(col2), 1);
+				String binaryValue = binaryValue1.concat(binaryValue2);
+				columnN = Integer.parseInt(binaryValue, 2);
+			}
+
+			int row1 = dis.read();
+			int row2 = dis.read();
+			// since we are setting the null part to '3' here we are equating it
+			// with 51
+			if (row2 == 51) {
+				rowN = row1;
+			} else {
+				String binaryValue1 = Integer.toBinaryString(row1);
+				String binaryValue2 = appendZerosToBinaryString(
+						Integer.toBinaryString(row2), 1);
+				String binaryValue = binaryValue1.concat(binaryValue2);
+				rowN = Integer.parseInt(binaryValue, 2);
+			}
+
+			maxG = dis.read();
+
+			OriginalImg = new int[rowN][columnN];
+			for (int i = 0; i < rowN; i++) {
+				for (int j = 0; j < columnN; j++) {
+					OriginalImg[i][j] = dis.read();
+				}
+			}
+
+			dis.close();
+		} catch (FileNotFoundException e) {
+			System.out.println("warning: file not found");
+		} catch (IOException e) {
+			System.out.println("warning: file format error");
+		}
+	}
+
+	public void saveBinaryImage() {
+		if (fileName != null && OriginalImg != null && OriginalImg.length > 0) {
+			String outputFileName = fileName
+					.substring(0, fileName.indexOf('.'))
+					+ "2"
+					+ fileName.substring(fileName.indexOf('.'));
+
+			try {
+				FileWriter fwriter = new FileWriter(outputFileName);
+				PrintWriter outputFile = new PrintWriter(fwriter);
+
+				outputFile.print("P2" + '\n');
+				outputFile
+						.print("" + columnN + " " + rowN + "\n" + maxG + "\n");
+				for (int i = 0; i < rowN; i++) {
+					for (int j = 0; j < columnN; j++) {
+						outputFile.print(OriginalImg[i][j] + " ");
+					}
+
+				}
+				fwriter.close();
+			} catch (IOException e) {
+				System.out.println("warning: file output error");
+			}
+		}
+	}
+
+	public static double[][] roundOffMatrix(double[][] inputMatrix) {
+		for (int i = 0; i < inputMatrix.length; i++) {
+			for (int j = 0; j < inputMatrix[0].length; j++) {
+				double value = inputMatrix[i][j];
+				double divide1000 = 1000;
+				double divide100 = 100;
+
+				if (Math.round(value * 1000) < 256) {
+					value = Math.round(value * 1000) / divide1000;
+				} else {
+					value = Math.round(value * 100) / divide100;
+				}
+				inputMatrix[i][j] = value;
+			}
+		}
+		return inputMatrix;
+	}
+
+	public void readAndSaveDataFromUSV(File headerFile, File svdFile, int rank) {
+
+		try {
+			// read header file and save rows and columns
+			Scanner scanner = new Scanner(headerFile);
+			columnN = scanner.nextInt();
+			rowN = scanner.nextInt();
+			maxG = scanner.nextInt();
+
+			Matrix A = new Matrix(rowN, columnN);
+
+			// read USingmaV values
+			scanner = new Scanner(svdFile);
+
+			double[][] U = new double[rowN][rowN];
+			double[][] sigma = new double[rowN][columnN];
+			double[][] V = new double[columnN][columnN];
+
+			// read the values from the file and save in a double array
+			for (int i = 0; i < rowN; i++) {
+				for (int j = 0; j < rowN; j++) {
+					U[i][j] = scanner.nextDouble();
+				}
+			}
+			for (int i = 0; i < rowN; i++) {
+				for (int j = 0; j < columnN; j++) {
+					sigma[i][j] = scanner.nextDouble();
+
+				}
+			}
+			for (int i = 0; i < columnN; i++) {
+				for (int j = 0; j < columnN; j++) {
+					V[i][j] = scanner.nextDouble();
+
+				}
+			}
+
+			// convert the 2D array to a Matrix object
+			Matrix uMat = new Matrix(U);
+			Matrix sigmaMat = new Matrix(sigma);
+			Matrix vtMat = new Matrix(V);
+
+			Matrix aMat = uMat.times(sigmaMat).times(vtMat);
+
+			double[][] aArray = aMat.getArray();
+
+			for (int i = 0; i < aArray.length; i++) {
+				for (int j = 0; j < aArray[0].length; j++) {
+					if (aArray[i][j] < 0) {
+						System.out.println("wrong");
+					}
+				}
+			}
+
+			// fetch the rows and col of all the matrices
+			int rowsInU = uMat.getRowDimension();
+			int colsInVT = vtMat.transpose().getColumnDimension();
+
+			// fetch cols from U according to rank
+			Matrix uColMatrix = uMat.getMatrix(0, rowsInU - 1, 0, rank - 1);
+
+			// fetch sigma values
+			Matrix sDiagonalMatrix = sigmaMat.getMatrix(0, rank - 1, 0,
+					rank - 1);
+
+			// fetch VT matrix
+			Matrix vtRowMatrix = vtMat.transpose().getMatrix(0, rank - 1, 0,
+					colsInVT - 1);
+
+			// saving the Matrix
+			String svdFileLocation = svdFile.getPath();
+			String outputFileName = svdFileLocation + "_" + rank + ".SVD";
+
+			// save row and col
+			FileOutputStream fos = new FileOutputStream(outputFileName);
+			DataOutputStream dos = new DataOutputStream(fos);
+
+			// write row and col
+			int[] colArray = splitNumbers(columnN);
+			writeNumber(dos, colArray);
+			int[] rowArray = splitNumbers(rowN);
+			writeNumber(dos, rowArray);
+			int[] rankArray = splitNumbers(rank);
+			writeNumber(dos, rankArray);
+			dos.write(maxG);
+
+			// USV matrix values can be double which we cannot save in 2bytes so
+			// multiplying the values by S value and rounding it of to some
+			// Integer
+			// again while reading it is divided by S value, this will not give
+			// a exact value bu will give approx value
+
+			// converting Matrix object to array
+			String testFile = svdFileLocation + ".test";
+			FileWriter fw1 = new FileWriter(testFile);
+			PrintWriter pw1 = new PrintWriter(fw1);
+
+			double[][] uArray = uColMatrix.getArray();
+			double[][] sArray = sDiagonalMatrix.getArray();
+			double[][] vtArray = vtRowMatrix.getArray();
+
+			pw1.print("U values" + '\n');
+
+			for (int i = 0; i < uArray.length; i++) {
+				for (int j = 0; j < uArray[0].length; j++) {
+
+					// for each value split it into two value before and after
+					// precision and save it
+					// for each value split the double into two values and save
+					int[] uIntArray = splitDoubleToInts(uArray[i][j]);
+					pw1.print(uIntArray[0]);
+					pw1.print(" ");
+					pw1.print(uIntArray[1]);
+					pw1.print(" ");
+
+					writeNumber(dos, uIntArray);
+				}
+				pw1.print('\n');
+			}
+
+			pw1.print("S values" + '\n');
+			// saving the sigma values
+			for (int i = 0; i < sArray.length; i++) {
+
+				// for each value split the double into two values and save
+				int[] sIntArray = splitDoubleToInts(sArray[i][i]);
+
+				// sigma will have values greater than 255 so we need to convert
+				// it to a string and save
+				int[] sIntegralArray = splitNumbers(sIntArray[0]);
+
+				if (sIntegralArray.length == 1) {
+					pw1.print(sIntegralArray[0]);
+					pw1.print(" ");
+				} else {
+					pw1.print(sIntegralArray[1]);
+					pw1.print(" ");
+					pw1.print(sIntArray[1]);
+					pw1.print(" ");
+
+				}
+
+				pw1.print('\n');
+				// write Integral Part, it can be two parts
+				writeNumber(dos, sIntegralArray);
+				// write precision part, it is rounded to one byte
+				dos.write(sIntArray[1]);
+
+			}
+
+			// saving VT values
+			pw1.print("V values" + '\n');
+			for (int i = 0; i < vtArray.length; i++) {
+				for (int j = 0; j < vtArray[0].length; j++) {
+
+					// for each value split into before and after precision and
+					// save the data.
+					if (vtArray[i][j] > 1) {
+						System.out.println("Problem Number");
+					}
+
+					int[] vtIntArray = splitDoubleToInts(vtArray[i][j]);
+					pw1.print(vtIntArray[0]);
+					pw1.print(" ");
+					pw1.print(vtIntArray[1]);
+					pw1.print(" ");
+
+					if (vtIntArray[0] > 1) {
+						System.out.println("value >1");
+					}
+					writeNumber(dos, vtIntArray);
+				}
+				pw1.print('\n');
+			}
+
+			dos.close();
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+	/**
+	 * Save the integers in the input array in 2bytes if only one integer is
+	 * there then the 2nd integer is defaulted to '3' else two numbers are saved
+	 * 
+	 * @param dos
+	 * @param inputArray
+	 * @throws IOException
+	 */
+	public static void writeNumber(DataOutputStream dos, int[] inputArray)
+			throws IOException {
+
+		if (inputArray.length == 1) {
+			dos.write(inputArray[0]);
+			dos.writeByte('3');
+		} else {
+			dos.write(inputArray[0]);
+			dos.write(inputArray[1]);
+		}
+
+	}
+
+	/**
+	 * Split the number into multiple 1byte size
+	 * 
+	 * @param number
+	 * @return
+	 */
+	public static int[] splitNumbers(int number) {
+
+		String binaryValue = Integer.toBinaryString(number);
+		double binaryLength = binaryValue.length();
+		double byteLength = 8;
+		int numberOfBytes = (int) Math.ceil(binaryLength / byteLength);
+		int[] outputArray = new int[numberOfBytes];
+		int counter = 0;
+		if (binaryValue.length() > 8) {
+			// append zeros
+			binaryValue = appendZerosToBinaryString(binaryValue, numberOfBytes);
+
+			int start = 0;
+			int end = 8;
+			for (int i = binaryValue.length(); i > 0; i -= 8) {
+				String partialNumber = binaryValue.substring(start, end);
+				int a = Integer.valueOf(partialNumber, 2);
+				outputArray[counter] = a;
+				start += 8;
+				end = end + 8 > binaryValue.length() ? binaryValue.length()
+						: end + 8;
+				counter++;
+
+			}
+		} else {
+
+			outputArray[0] = number;
+
+		}
+
+		return outputArray;
+
+	}
+
+	/**
+	 * Append zeros to the binary string if the length is < 8
+	 * 
+	 * @param binaryString
+	 * @param numberOfBytes
+	 * @return
+	 */
+	public static String appendZerosToBinaryString(String binaryString,
+			int numberOfBytes) {
+
+		int length = binaryString.length();
+		int numberOfZerosToAppend = (numberOfBytes * 8) - length;
+		for (int i = 0; i < numberOfZerosToAppend; i++) {
+			binaryString = "0".concat(binaryString);
+		}
+
+		return binaryString;
+	}
+
+	/**
+	 * Round off the double to 2/3 decimal points and split the double to two
+	 * parts part one - Integral part two - precision part
+	 * 
+	 * @param input
+	 * @return
+	 */
+	public static int[] splitDoubleToInts(double input) {
+		int[] outptArray = new int[2];
+		double divide100 = 100;
+		double divide1000 = 1000;
+
+		// rounding the input to 2 decimal points
+		if (input < 0) {
+			input = input * -1;
+			if (Math.round(input * 1000) < 256) {
+				input = Math.round(input * 1000) / divide1000;
+			} else {
+				input = Math.round(input * 100) / divide100;
+			}
+			input = input * -1;
+		} else {
+			if (Math.round(input * 1000) < 256) {
+				input = Math.round(input * 1000) / divide1000;
+			} else {
+				input = Math.round(input * 100) / divide100;
+			}
+		}
+
+		// converting the double to String for easy manipulation
+		String doubleInString = String.valueOf(input);
+
+		// taking substring before .
+		String beforePrecision = doubleInString.substring(0,
+				doubleInString.indexOf('.'));
+
+		// taking substring after point
+		String afterPrecision = doubleInString.substring(doubleInString
+				.indexOf('.'));
+
+		// converting back the two numbers
+		double precision = Double.valueOf(afterPrecision);
+		double number = Double.valueOf(beforePrecision);
+
+		// if it is neg number then substract precision from 1 to make it
+		// positive
+		// else add 1 to number which is before . part
+		if (input > 0) {
+			number += 1;
+		}
+
+		int roundOfValueAfterPrecision = (int) (precision * 1000);
+		if (roundOfValueAfterPrecision > 255) {
+			roundOfValueAfterPrecision = (int) Math
+					.floor((double) roundOfValueAfterPrecision / 10);
+		}
+		int numberInt = (int) number;
+		outptArray[0] = numberInt;
+		outptArray[1] = roundOfValueAfterPrecision;
+		return outptArray;
+	}
+
+	/**
+	 * Approximated UVS values are read and saved into an image
+	 * 
+	 * @param svdFile
+	 */
+	public static void createApproximatedImageAndSave(File svdFile) {
+
+		try {
+
+			FileInputStream fis = new FileInputStream(svdFile);
+			DataInputStream dis = new DataInputStream(fis);
+
+			int col1 = dis.read();
+			int col2 = dis.read();
+
+			// since we are setting the null part to '3' here we are equating it
+			// with 51
+			if (col2 == 51) {
+				columnN = col1;
+			} else {
+				String binaryValue1 = Integer.toBinaryString(col1);
+				String binaryValue2 = appendZerosToBinaryString(
+						Integer.toBinaryString(col2), 1);
+				String binaryValue = binaryValue1.concat(binaryValue2);
+				columnN = Integer.parseInt(binaryValue, 2);
+			}
+
+			int row1 = dis.read();
+			int row2 = dis.read();
+			// since we are setting the null part to '3' here we are equating it
+			// with 51
+			if (row2 == 51) {
+				rowN = row1;
+			} else {
+				String binaryValue1 = Integer.toBinaryString(row1);
+				String binaryValue2 = appendZerosToBinaryString(
+						Integer.toBinaryString(row2), 1);
+				String binaryValue = binaryValue1.concat(binaryValue2);
+				rowN = Integer.parseInt(binaryValue, 2);
+			}
+
+			int rank;
+			int rank1 = dis.read();
+			int rank2 = dis.read();
+			// since we are setting the null part to '3' here we are equating it
+			// with 51
+			if (rank2 == 51) {
+				rank = rank1;
+			} else {
+				String binaryValue1 = Integer.toBinaryString(rank1);
+				String binaryValue2 = appendZerosToBinaryString(
+						Integer.toBinaryString(rank2), 1);
+				String binaryValue = binaryValue1.concat(binaryValue2);
+				rank = Integer.parseInt(binaryValue, 2);
+			}
+
+			maxG = dis.read();
+			// define approximated matrices
+			double[][] approxU = new double[rowN][rank];
+			double[][] approxS = new double[rank][rank];
+			double[][] approxVT = new double[rank][columnN];
+
+			// read U values
+
+			for (int i = 0; i < rowN; i++) {
+				for (int j = 0; j < rank; j++) {
+					int integralPart = dis.read();
+					int precisionPart = dis.read();
+
+					approxU[i][j] = Double.valueOf(concatenateIntegersToDouble(
+							integralPart, precisionPart));
+
+				}
+
+			}
+
+			// read Sigma values
+			for (int i = 0; i < rank; i++) {
+
+				int integralPart1 = dis.read();
+				int integralPart2 = dis.read();
+				int precisionPart = dis.read();
+				int integralPart;
+
+				if (integralPart2 == 51) {
+					integralPart = integralPart1;
+				} else {
+					String binaryValue1 = Integer.toBinaryString(integralPart1);
+					String binaryValue2 = appendZerosToBinaryString(
+							Integer.toBinaryString(integralPart2), 1);
+					String binaryValue = binaryValue1.concat(binaryValue2);
+					integralPart = Integer.valueOf(binaryValue, 2);
+				}
+
+				approxS[i][i] = Double.valueOf(concatenateIntegersToDouble(
+						integralPart, precisionPart));
+
+			}
+
+			// read VT values
+			for (int i = 0; i < rank; i++) {
+				for (int j = 0; j < columnN; j++) {
+
+					int integralPart = dis.read();
+					int precisionPart = dis.read();
+
+					approxVT[i][j] = Double
+							.valueOf(concatenateIntegersToDouble(integralPart,
+									precisionPart));
+
+					if (approxVT[i][j] > 1) {
+						System.out.println("There is some wrong");
+					}
+
+				}
+			}
+
+			// form Matrix object
+
+			Matrix approxUMat = new Matrix(approxU);
+			Matrix approxSMat = new Matrix(approxS);
+			Matrix approxVTMat = new Matrix(approxVT);
+
+			/*
+			 * Matrix uvMatrix = approxUMat.times(approxVTMat); double[][]
+			 * uvMatArray = uvMatrix.getArray(); Matrix uSigmaMatrix =
+			 * approxUMat.times(approxSMat); double[][] uSigmaArray =
+			 * uSigmaMatrix.getArray(); Matrix uSingmaVTMatrix =
+			 * uSigmaMatrix.times(approxVTMat);
+			 */
+			Matrix uvs = approxUMat.times(approxSMat).times(approxVTMat);
+			double[][] arrayA = uvs.getArray();
+
+			for (int i = 0; i < arrayA.length; i++) {
+				for (int j = 0; j < arrayA[0].length; j++) {
+					if (arrayA[i][j] < 0) {
+						System.out.println("wrong");
+					}
+				}
+
+			}
+
+			String filePath = svdFile.getPath();
+			String outputFile = filePath.substring(0, filePath.indexOf('.'))
+					+ rank + ".pgm";
+
+			FileWriter fw = new FileWriter(outputFile);
+
+			PrintWriter pw = new PrintWriter(fw);
+
+			pw.print("P2" + '\n');
+			pw.print(columnN);
+			pw.print(" ");
+			pw.print(rowN);
+			pw.print('\n');
+			pw.print(255);
+			pw.print('\n');
+
+			for (int i = 0; i < arrayA.length; i++) {
+				for (int j = 0; j < arrayA[0].length; j++) {
+					pw.print((Math.round(arrayA[i][j])));
+					pw.print(" ");
+				}
+				pw.print('\n');
+			}
+			pw.close();
+			dis.close();
+
+			//
+		} catch (FileNotFoundException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		} catch (IOException e) {
+			// TODO Auto-generated catch block
+			e.printStackTrace();
+		}
+
+	}
+
+	public static int setNumberFromChar(char inputChar) {
+
+		int outputInt;
+		if (inputChar != '1' && inputChar != '2') {
+			outputInt = (int) inputChar;
+		} else if (inputChar == '1') {
+			outputInt = 10;
+		} else {
+			outputInt = 13;
+		}
+		return outputInt;
+	}
+
+	public static char setCharFromNumber(int inputNumber) {
+		char outputChar;
+		if (inputNumber != 10 && inputNumber != 13) {
+			outputChar = (char) inputNumber;
+		} else if (inputNumber == 10) {
+			outputChar = '1';
+		} else {
+			outputChar = '2';
+		}
+
+		return outputChar;
+	}
+
+	public static String concatenateIntegersToDouble(int beforePrecisionValue,
+			int afterPrecisionValue) {
+
+		// we added 1 if the number is positive so the before precision value
+		// will be 1
+		// else before precision value will be zero and this number is negative
+		StringBuilder finalDoubleValue = new StringBuilder();
+		if (beforePrecisionValue > 0) {
+			beforePrecisionValue = beforePrecisionValue - 1;
+			if (afterPrecisionValue < 100) {
+				if (afterPrecisionValue < 10) {
+					finalDoubleValue.append(beforePrecisionValue).append('.')
+							.append("00").append(afterPrecisionValue);
+				} else {
+					finalDoubleValue.append(beforePrecisionValue).append('.')
+							.append("0").append(afterPrecisionValue);
+				}
+
+			} else {
+				finalDoubleValue.append(beforePrecisionValue).append('.')
+						.append(afterPrecisionValue);
+			}
+		} else {
+			if (afterPrecisionValue < 100) {
+				if (afterPrecisionValue < 10) {
+					finalDoubleValue.append('-').append(beforePrecisionValue)
+							.append(".").append("00")
+							.append(afterPrecisionValue);
+				} else {
+					finalDoubleValue.append('-').append(beforePrecisionValue)
+							.append(".").append("0")
+							.append(afterPrecisionValue);
+				}
+			} else {
+				finalDoubleValue.append('-').append(beforePrecisionValue)
+						.append(".").append(afterPrecisionValue);
+			}
+			/*
+			 * String precision = "."
+			 * .concat(Integer.toString(afterPrecisionValue)); double
+			 * afterPrecisionDouble = Double.valueOf(precision);
+			 * 
+			 * afterPrecisionDouble = 1 - afterPrecisionDouble;
+			 * finalDoubleValue.append('-').append(
+			 * Double.toString(afterPrecisionDouble));
+			 */
+
+		}
+
+		return finalDoubleValue.toString();
+
+	}
+}

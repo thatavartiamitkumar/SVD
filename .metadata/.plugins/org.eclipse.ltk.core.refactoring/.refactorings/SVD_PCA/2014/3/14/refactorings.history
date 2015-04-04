@@ -1,0 +1,4 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<session version="1.0">
+<refactoring comment="Copy element &apos;SVD.java&apos; to &apos;SVD_PCA/src&apos;&#x0D;&#x0A;- Original project: &apos;SVD_PCA&apos;&#x0D;&#x0A;- Destination element: &apos;SVD_PCA/src&apos;&#x0D;&#x0A;- Original element: &apos;ua.edu.svd.SVD.java&apos;" description="Copy compilation unit" destination="/src" element1="/src&lt;ua.edu.svd{SVD.java" files="0" flags="589830" folders="0" id="org.eclipse.jdt.ui.copy" policy="org.eclipse.jdt.ui.copyResources" stamp="1396204852613" units="1" version="1.0"/>
+</session>
