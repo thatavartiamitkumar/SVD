@@ -28,7 +28,7 @@ Compressing Image using SVD
     	- Row, columns, rank are all integers which can be greater than 256 so each of these values are saved in 2bytes
     	  irrespective of how big the number is.
     	- Max Grey scale value considered is 255 so anytime it is saved in 1byte.
-    	Saving U and V matrices:-
+#####Saving U and V matrices:-#####
         	- U and V matrices are unit vectors which has values < 1.
         	- So all the values are double numbers, which generally takes 8bytes to store in java.
         	- Instead of directly saving the number in double we are splitting the double number in two parts INTEGRAL and
@@ -38,7 +38,7 @@ Compressing Image using SVD
         	- In order to differentiate between negative and positive numbers we are adding 1 to all positive number and
         	  subtracting it while retrieving the value 
          	- So U matrix take 2mr bytes and V matrix takes 2nr bytes.
-      Saving S matrix:-
+#####Saving S matrix:-#####
         	- Sigma matrix has huge values which are all doubles.
         	- Same logic to save U and V values are used to save the values in sigma as well.
         	- But the Integral part of sigma can be very large (>256) so each integral part is saved in 2bytes.
